@@ -1,0 +1,136 @@
+import psycopg2
+import math
+import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
+
+try:
+    conexion = psycopg2.connect("dbname='postgres' user='postgres' host='192.168.1.200' password='postgres'")
+except:
+    print ("Error de conexión")
+
+cur0 = conexion.cursor()
+cur0.execute("Truncate valores")
+cur0.execute("SELECT DISTINCT E.estructura FROM estructuras E order by estructura")
+
+for estruct in cur0.fetchall():
+
+	cur1 = conexion.cursor()
+	cur1.execute("SELECT DISTINCT P.tiempo FROM particulas P order by tiempo")
+
+	for tiempo_iteracion in cur1.fetchall():
+
+		ConvM= 0.01427070299146538
+		ModuloBase=10
+		error=1
+		offset=1
+		CMx=0.5
+		CMy=0.5
+		CMz=0.5
+		N_dif = 0
+		Radio_init = 1
+		Radio_max = 0
+		primera_iteracion = True
+		segunda_iteracion = False
+
+		while error > 10e-4 or N_dif < 100:
+
+			cur2 = conexion.cursor()
+			sql = "SELECT E.estructura ,P.tiempo, P.particula, P.masa, P.posx, P.posy, P.posz, P.tipo \
+			FROM estructuras E JOIN particulas P ON E.particula = P.particula where P.tiempo = '"+ tiempo_iteracion[0] +"' and E.estructura = '"+ estruct[0] + "'"
+			#print(sql)
+			cur2.execute(sql)
+
+			Radio_max = Radio_max*offset
+			masa_total = 0
+			N_in = 0
+			N_tot = 0
+			mx = 0
+			my = 0
+			mz = 0
+			Ixx = 0
+			Iyy = 0
+			Izz = 0
+			Ixy = 0
+			Iyz = 0
+			Ixz = 0
+
+
+			for row in cur2.fetchall():
+				estructura = row[0]
+				tiempo = row[1]
+				particula = row[2]
+				masa = float(row[3])
+				posx = float(row[4])
+				posy = float(row[5])
+				posz = float(row[6])
+				tipo = row[7]
+
+				N_tot = N_tot + 1
+
+				DistanciaCM=math.sqrt((posx - CMx)**2 + (posy - CMy)**2 + (posz - CMz)**2)
+				if primera_iteracion == True and DistanciaCM <= Radio_init:
+					N_in = N_in +1
+					mx = mx + masa*posx
+					my = my + masa*posy
+					mz = mz + masa*posz
+					masa_total = masa_total + masa
+
+				if segunda_iteracion == True and DistanciaCM > Radio_max:
+					Radio_max = DistanciaCM
+
+
+				if primera_iteracion == False and DistanciaCM <= Radio_max:
+					N_in = N_in +1
+					mx = mx + masa*posx
+					my = my + masa*posy
+					mz = mz + masa*posz
+					masa_total = masa_total + masa
+
+				rn2 = (posx - CMx)**2 + (posy - CMy)**2 + (posz - CMz)**2
+
+				Ixx = Ixx + masa*(rn2 - (posx - CMx)*(posx - CMx))/(rn2)
+				Iyy = Iyy + masa*(rn2 - (posy - CMy)*(posy - CMy))/(rn2)
+				Izz = Izz + masa*(rn2 - (posz - CMz)*(posz - CMz))/(rn2)
+				Ixy = Ixy + masa*(  0 - (posx - CMx)*(posy - CMy))/(rn2)
+				Ixz = Ixz + masa*(  0 - (posz - CMz)*(posx - CMx))/(rn2)
+				Iyz = Iyz + masa*(  0 - (posy - CMy)*(posz - CMz))/(rn2)
+
+			N_dif = N_tot - N_in
+			CMx = mx/masa_total
+			CMy = my/masa_total
+			CMz = mz/masa_total
+
+			CM = [CMx, CMy, CMz]
+			ModuloCM = math.sqrt(CMx**2 + CMy**2 + CMz**2)
+			error = abs(ModuloBase - ModuloCM)
+			ModuloBase = ModuloCM
+			offset = offset*0.98
+
+			if segunda_iteracion == True:
+				segunda_iteracion = False
+
+			if primera_iteracion == True:
+				segunda_iteracion = True
+			primera_iteracion = False
+
+
+			#print("Radio efectivo usado =", Radio_max)
+			#print("Fraccion de particulas usadas =", N_in/N_tot)
+			#print("Centro de masas provisional =", CM)
+			#print("")
+
+		print("")
+		print("Centro de masas:", estruct[0], tiempo_iteracion[0], "=", CM)
+		print("")
+
+		sql = "INSERT into valores (estructura, tiempo, cmx, cmy, cmz, xx, yy, zz, xy, xz, yz) \
+		values ('"+estruct[0]+"','"+tiempo_iteracion[0]+"', '"+str(CMx)+"', '"+str(CMy)+"', '"+str(CMz)+"', '"+str(Ixx)+"', '"+str(Iyy)+"', '"+str(Izz)+"', '"+str(Ixy)+"', '"+str(Ixz)+"', '"+str(Iyz)+"')"
+
+		cur2.execute(sql)
+		cur2.execute("commit")
+		print("Momentos de inercia:", Ixx, Iyy, Izz, Ixy, Ixz, Iyz)
+
+		#ax.scatter3D(CMx, CMy, CMz, c=CMz, s=1, cmap='jet')
+
+conexion.close()
+

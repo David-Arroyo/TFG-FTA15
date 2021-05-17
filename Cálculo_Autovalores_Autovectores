@@ -1,0 +1,61 @@
+import psycopg2
+import math
+import numpy as np
+from sympy import *
+import scipy.linalg as la
+
+try:
+    conexion = psycopg2.connect("dbname='postgres' user='postgres' host='192.168.1.200' password='postgres'")
+except:
+    print ("Error de conexión")
+
+cur1 = conexion.cursor()
+sql = "SELECT V.estructura, V.tiempo, V.xx, V.yy, V.zz, V.xy, V.xz, V.yz FROM valores V order by V.estructura, V.tiempo"
+cur1.execute(sql)
+
+for row in cur1.fetchall():
+	estructura = row[0]
+	tiempo = row[1]
+	Ixx = float(row[2])
+	Iyy = float(row[3])
+	Izz = float(row[4])
+	Ixy = float(row[5])
+	Ixz = float(row[6])
+	Iyz = float(row[7])
+	#print(estructura, tiempo, Ixx, Iyy, Izz, Ixy, Ixz, Iyz)
+
+	cur2 = conexion.cursor()
+	sql = "SELECT P.masa FROM estructuras E JOIN particulas P ON E.particula = P.particula where P.tiempo = '"+ row[1] +"' and E.estructura = '"+ row[0] + "'"
+	#print(sql)
+	cur2.execute(sql)
+	M = 0
+
+	for row2 in cur2.fetchall():
+		masa = float(row2[0])
+		M = M + masa
+
+	I = np.array([[Ixx, Ixy, Ixz], [Ixy, Iyy, Iyz], [Ixz, Iyz, Izz]])
+
+	eigvals, eigvecs = la.eig(I)
+	idx = np.argsort(eigvals)
+
+	eigvals = eigvals[idx]
+	eigvecs = eigvecs[:, idx]
+
+	L1 = eigvals[0].real
+	L2 = eigvals[1].real
+	L3 = eigvals[2].real
+
+	A = math.sqrt(5*(L2 - L1 + L3)/(2*M))
+	B = math.sqrt(5*(L3 - L2 + L1)/(2*M))
+	C = math.sqrt(5*(L1 - L3 + L2)/(2*M))
+
+	print(tiempo, ";", estructura, ";", A, ";", B, ";", C)
+	
+
+	print("")
+	
+	cur3 = conexion.cursor()
+	sql = "UPDATE valores SET a1='"+str(L1)+"', a2='"+str(L2)+"', a3='"+str(L3)+"', v11='"+str(eigvecs[0,0])+"', v12='"+str(eigvecs[1,0])+"', v13='"+str(eigvecs[2,0])+"' WHERE estructura='"+estructura+"' and tiempo='"+tiempo+"'"
+	cur3.execute(sql)
+	cur3.execute("commit")

@@ -3,6 +3,7 @@ import math
 import matplotlib.pyplot as plt
 from mpl_toolkits import mplot3d
 
+#Conectamos a la base de datos
 try:
     conexion = psycopg2.connect("dbname='postgres' user='postgres' host='192.168.1.200' password='postgres'")
 except:
@@ -10,6 +11,8 @@ except:
 
 cur0 = conexion.cursor()
 cur0.execute("Truncate valores")
+
+#Seleccionamos por estructura y tiempo en cada iteracion
 cur0.execute("SELECT DISTINCT E.estructura FROM estructuras E order by estructura")
 
 for estruct in cur0.fetchall():
@@ -31,8 +34,9 @@ for estruct in cur0.fetchall():
 		Radio_max = 0
 		primera_iteracion = True
 		segunda_iteracion = False
-
-		while error > 10e-4 or N_dif < 100:
+		
+		#Mientras el error sea grande, iterar para calcular el centro de masa
+		while error > 10e-4:
 
 			cur2 = conexion.cursor()
 			sql = "SELECT E.estructura ,P.tiempo, P.particula, P.masa, P.posx, P.posy, P.posz, P.tipo \
@@ -66,7 +70,8 @@ for estruct in cur0.fetchall():
 				tipo = row[7]
 
 				N_tot = N_tot + 1
-
+				
+				#Primera iteracion: calculo inicial
 				DistanciaCM=math.sqrt((posx - CMx)**2 + (posy - CMy)**2 + (posz - CMz)**2)
 				if primera_iteracion == True and DistanciaCM <= Radio_init:
 					N_in = N_in +1
@@ -74,11 +79,12 @@ for estruct in cur0.fetchall():
 					my = my + masa*posy
 					mz = mz + masa*posz
 					masa_total = masa_total + masa
-
+				
+				#Segunda iteracion: establecemos el radio maximo
 				if segunda_iteracion == True and DistanciaCM > Radio_max:
 					Radio_max = DistanciaCM
 
-
+				#Resto de iteraciones: calculos posteriores
 				if primera_iteracion == False and DistanciaCM <= Radio_max:
 					N_in = N_in +1
 					mx = mx + masa*posx
